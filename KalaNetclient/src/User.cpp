@@ -99,3 +99,72 @@ void Customer::addToCart(int productId, int quantity) {
     }
 }
 
+void Customer::removeFromCart(int productId) {
+    cart.remove(productId);
+}
+
+void Customer::addTransaction(const Transaction& trans) {
+    purchaseHistory.append(trans);
+}
+
+void Customer::addRegisteredProduct(int productId) {
+    if (!registeredProductIds.contains(productId)) {
+        registeredProductIds.append(productId);
+    }
+}
+
+void Customer::saveToStream(QDataStream& stream) const {
+    User::saveToStream(stream);
+
+    // Save cart
+    stream << cart.size();
+    for (auto it = cart.begin(); it != cart.end(); ++it) {
+        stream << it.key() << it.value();
+    }
+
+    // Save purchase history
+    stream << purchaseHistory.size();
+    for (const auto& trans : purchaseHistory) {
+        trans.saveToStream(stream);
+    }
+
+    // Save registered products
+    stream << registeredProductIds.size();
+    for (int id : registeredProductIds) {
+        stream << id;
+    }
+}
+
+void Customer::loadFromStream(QDataStream& stream) {
+    User::loadFromStream(stream);
+
+    // Load cart
+    int cartSize;
+    stream >> cartSize;
+    cart.clear();
+    for (int i = 0; i < cartSize; ++i) {
+        int key, value;
+        stream >> key >> value;
+        cart[key] = value;
+    }
+
+    // Load purchase history
+    int historySize;
+    stream >> historySize;
+    purchaseHistory.clear();
+    for (int i = 0; i < historySize; ++i) {
+        Transaction trans;
+        trans.loadFromStream(stream);
+        purchaseHistory.append(trans);
+    }
+
+    // Load registered products
+    int regSize;
+    stream >> regSize;
+    registeredProductIds.clear();
+    for (int i = 0; i < regSize; ++i) {
+        int id;
+        stream >> id;
+        registeredProductIds.append(id);
+    }
+}
