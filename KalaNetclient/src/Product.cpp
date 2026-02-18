@@ -39,3 +39,16 @@ bool Product::purchase(int quantity) {
     return true;
 }
 
+void Product::saveToStream(QDataStream& stream) const {
+    stream << productId << name << description << category 
+           << price << stock << sellerUsername 
+           << static_cast<int>(status) << registrationDate << imagePath;
+}
+
+void Product::loadFromStream(QDataStream& stream) {
+    int statusInt;
+    stream >> productId >> name >> description >> category 
+           >> price >> stock >> sellerUsername 
+           >> statusInt >> registrationDate >> imagePath;
+    status = static_cast<ProductStatus>(statusInt);
+}
