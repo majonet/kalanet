@@ -4,6 +4,7 @@
 #include <QString>
 #include <QDateTime>
 #include <QDataStream>
+#include <QImage>
 
 enum class ProductStatus {
     PENDING_APPROVAL,
@@ -23,11 +24,12 @@ private:
     ProductStatus status;
     QDateTime registrationDate;
     QString imagePath;
+    QString imageBase64;  // Store image as base64 string
 
 public:
     Product();
-    Product(int id, const QString& name, const QString& description, 
-            const QString& category, double price, int stock, 
+    Product(int id, const QString& name, const QString& description,
+            const QString& category, double price, int stock,
             const QString& seller);
 
     // Getters
@@ -41,6 +43,7 @@ public:
     ProductStatus getStatus() const { return status; }
     QDateTime getRegistrationDate() const { return registrationDate; }
     QString getImagePath() const { return imagePath; }
+    QString getImageBase64() const { return imageBase64; }
 
     // Setters
     void setProductId(int id) { productId = id; }
@@ -53,13 +56,25 @@ public:
     void setStatus(ProductStatus newStatus) { status = newStatus; }
     void setRegistrationDate(const QDateTime& date) { registrationDate = date; }
     void setImagePath(const QString& path) { imagePath = path; }
+    void setImageBase64(const QString& base64) { imageBase64 = base64; }
 
     // Status helpers
     bool isApproved() const { return status == ProductStatus::APPROVED; }
     bool isPending() const { return status == ProductStatus::PENDING_APPROVAL; }
     bool isSold() const { return status == ProductStatus::SOLD; }
+    bool hasImage() const { return !imageBase64.isEmpty(); }
 
     QString getStatusString() const;
+
+    // Image handling
+    QImage getImage() const;
+    void setImage(const QImage& image);
+    void clearImage() { imageBase64.clear(); }
+
+    // Static helper for image processing
+    static QString imageToBase64(const QImage& image, int maxWidth = 400, int maxHeight = 400);
+    static QImage base64ToImage(const QString& base64);
+    static QImage resizeImage(const QImage& source, int maxWidth, int maxHeight);
 
     // Serialization
     void saveToStream(QDataStream& stream) const;

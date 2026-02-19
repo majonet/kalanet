@@ -14,7 +14,8 @@
 #include <QDateTime>
 #include <QApplication>
 #include <QRegularExpression>
-
+#include <QFileDialog>
+#include <QBuffer>
 MainWindow::MainWindow(User* user, QWidget* parent)
     : QMainWindow(parent), currentUser(user) {
     isAdmin = (user->getUserType() == UserType::ADMIN);
@@ -413,6 +414,36 @@ void MainWindow::onAddToCart() {
     }
 }
 
+// void MainWindow::onViewProductDetails() {
+//     int row = productsTable->currentRow();
+//     if (row < 0) {
+//         showError("Please select a product first");
+//         return;
+//     }
+
+//     int productId = productsTable->item(row, 0)->text().toInt();
+//     DataManager* dm = DataManager::getInstance();
+//     Product* product = dm->getProduct(productId);
+
+//     if (product) {
+//         QString details = QString("<h3>%1</h3>"
+//                                   "<p><b>Description:</b> %2</p>"
+//                                   "<p><b>Category:</b> %3</p>"
+//                                   "<p><b>Price:</b> $%4</p>"
+//                                   "<p><b>Stock:</b> %5</p>"
+//                                   "<p><b>Seller:</b> %6</p>"
+//                                   "<p><b>Status:</b> %7</p>")
+//                               .arg(product->getName())
+//                               .arg(product->getDescription())
+//                               .arg(product->getCategory())
+//                               .arg(product->getPrice(), 0, 'f', 2)
+//                               .arg(product->getStock())
+//                               .arg(product->getSellerUsername())
+//                               .arg(product->getStatusString());
+
+//         productDetailsLabel->setText(details);
+//     }
+// }
 void MainWindow::onViewProductDetails() {
     int row = productsTable->currentRow();
     if (row < 0) {
@@ -425,22 +456,55 @@ void MainWindow::onViewProductDetails() {
     Product* product = dm->getProduct(productId);
 
     if (product) {
-        QString details = QString("<h3>%1</h3>"
+        // Create a dialog to show full product details with image
+        QDialog dialog(this);
+        dialog.setWindowTitle("Product Details - " + product->getName());
+        dialog.setMinimumWidth(500);
+
+        QVBoxLayout* mainLayout = new QVBoxLayout(&dialog);
+
+        // Text details
+        QString detailsText = QString(
+                                  "<h2>%1</h2>"
                                   "<p><b>Description:</b> %2</p>"
                                   "<p><b>Category:</b> %3</p>"
                                   "<p><b>Price:</b> $%4</p>"
                                   "<p><b>Stock:</b> %5</p>"
                                   "<p><b>Seller:</b> %6</p>"
-                                  "<p><b>Status:</b> %7</p>")
-                              .arg(product->getName())
-                              .arg(product->getDescription())
-                              .arg(product->getCategory())
-                              .arg(product->getPrice(), 0, 'f', 2)
-                              .arg(product->getStock())
-                              .arg(product->getSellerUsername())
-                              .arg(product->getStatusString());
+                                  "<p><b>Status:</b> %7</p>"
+                                  "<p><b>Image:</b> %8</p>")
+                                  .arg(product->getName())
+                                  .arg(product->getDescription())
+                                  .arg(product->getCategory())
+                                  .arg(product->getPrice(), 0, 'f', 2)
+                                  .arg(product->getStock())
+                                  .arg(product->getSellerUsername())
+                                  .arg(product->getStatusString())
+                                  .arg(product->hasImage() ? "Available" : "Not available");
 
-        productDetailsLabel->setText(details);
+        QLabel* textLabel = new QLabel(detailsText);
+        textLabel->setWordWrap(true);
+        mainLayout->addWidget(textLabel);
+
+        // Image display
+        if (product->hasImage()) {
+            QImage img = product->getImage();
+            if (!img.isNull()) {
+                QLabel* imageLabel = new QLabel();
+                QPixmap pixmap = QPixmap::fromImage(img);
+                // Scale to reasonable size for display
+                imageLabel->setPixmap(pixmap.scaled(400, 400, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                imageLabel->setAlignment(Qt::AlignCenter);
+                imageLabel->setStyleSheet("border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9;");
+                mainLayout->addWidget(imageLabel);
+            }
+        }
+
+        QPushButton* closeButton = new QPushButton("Close");
+        connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+        mainLayout->addWidget(closeButton);
+
+        dialog.exec();
     }
 }
 
@@ -925,10 +989,156 @@ void MainWindow::onRejectProduct() {
     }
 }
 
+void MainWindow::onUploadProductImage() {
+    QString fileName = QFileDialog::getOpenFileName(
+        this,
+        tr("Select Product Image"),
+        QDir::homePath(),
+        tr("Image Files (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)")
+        );
+
+    if (fileName.isEmpty()) {
+        return;  // User cancelled
+    }
+
+    // Load and validate image
+    QImage image(fileName);
+    if (image.isNull()) {
+        showError("Failed to load image. Please select a valid image file.");
+        return;
+    }
+
+    // Convert to base64 (with automatic resizing to 400x400 max)
+    currentImageBase64 = Product::imageToBase64(image, 400, 400);
+
+    if (currentImageBase64.isEmpty()) {
+        showError("Failed to process image.");
+        return;
+    }
+
+    // Show preview
+    QImage preview = Product::base64ToImage(currentImageBase64);
+    if (!preview.isNull()) {
+        QPixmap pixmap = QPixmap::fromImage(preview);
+        // Scale for display but keep aspect ratio
+        productImageLabel->setPixmap(pixmap.scaled(200, 200, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        productImageLabel->setText("");  // Clear "No Image" text
+    }
+
+    showSuccess("Image loaded successfully!");
+}
+
+void MainWindow::onClearProductImage() {
+    currentImageBase64.clear();
+    productImageLabel->clear();
+    productImageLabel->setText("No Image");
+    productImageLabel->setStyleSheet("border: 2px dashed #ccc; background-color: #f5f5f5;");
+}
+
+
+
+
+
+
+// void MainWindow::onAddProduct() {
+//     QDialog dialog(this);
+//     dialog.setWindowTitle("Add Product (Direct - Approved)");
+//     dialog.setMinimumWidth(450);
+
+//     QFormLayout form(&dialog);
+
+//     QLineEdit* nameEdit = new QLineEdit(&dialog);
+//     QTextEdit* descEdit = new QTextEdit(&dialog);
+//     descEdit->setMaximumHeight(100);
+//     QComboBox* catCombo = new QComboBox(&dialog);
+//     catCombo->addItems(QStringList() << "Electronics" << "Clothing" << "Books" << "Home" << "Sports" << "Other");
+//     QDoubleSpinBox* priceSpin = new QDoubleSpinBox(&dialog);
+//     priceSpin->setRange(0.01, 100000);
+//     priceSpin->setPrefix("$");
+//     priceSpin->setDecimals(2);
+//     QSpinBox* stockSpin = new QSpinBox(&dialog);
+//     stockSpin->setRange(1, 10000);
+
+//     form.addRow("Name:*", nameEdit);
+//     form.addRow("Description:", descEdit);
+//     form.addRow("Category:*", catCombo);
+//     form.addRow("Price:*", priceSpin);
+//     form.addRow("Stock:*", stockSpin);
+
+//     // Image upload section
+//     QHBoxLayout* imageLayout = new QHBoxLayout();
+
+//     productImageLabel = new QLabel("No Image");
+//     productImageLabel->setFixedSize(200, 200);
+//     productImageLabel->setStyleSheet("border: 2px dashed #ccc; background-color: #f5f5f5;");
+//     productImageLabel->setAlignment(Qt::AlignCenter);
+//     productImageLabel->setWordWrap(true);
+
+//     QVBoxLayout* imageBtnLayout = new QVBoxLayout();
+//     uploadImageButton = new QPushButton("Upload Image", &dialog);
+//     uploadImageButton->setToolTip("Select an image file (max 400x400)");
+//     connect(uploadImageButton, &QPushButton::clicked, this, &MainWindow::onUploadProductImage);
+
+//     clearImageButton = new QPushButton("Clear", &dialog);
+//     connect(clearImageButton, &QPushButton::clicked, this, &MainWindow::onClearProductImage);
+
+//     imageBtnLayout->addWidget(uploadImageButton);
+//     imageBtnLayout->addWidget(clearImageButton);
+//     imageBtnLayout->addStretch();
+
+//     imageLayout->addWidget(productImageLabel);
+//     imageLayout->addLayout(imageBtnLayout);
+//     imageLayout->addStretch();
+
+//     form.addRow("Product Image:", imageLayout);
+
+//     // Reset current image for new product
+//     currentImageBase64.clear();
+
+//     QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+//                                Qt::Horizontal, &dialog);
+//     form.addRow(&buttonBox);
+//     connect(&buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+//     connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+//     if (dialog.exec() == QDialog::Accepted) {
+//         if (nameEdit->text().isEmpty()) {
+//             showError("Product name is required");
+//             return;
+//         }
+
+//         DataManager* dm = DataManager::getInstance();
+//         int productId = dm->getNextProductId();
+
+//         Product* product = new Product(
+//             productId,
+//             nameEdit->text(),
+//             descEdit->toPlainText(),
+//             catCombo->currentText(),
+//             priceSpin->value(),
+//             stockSpin->value(),
+//             currentUser->getUsername()
+//             );
+//         product->setStatus(ProductStatus::APPROVED);
+//         product->setImageBase64(currentImageBase64);  // Save image
+
+//         dm->addProduct(product);
+
+//         Customer* adminCustomer = dynamic_cast<Customer*>(currentUser);
+//         if (adminCustomer)
+//             adminCustomer->addRegisteredProduct(productId);
+
+//         dm->saveAllData();
+//         refreshAdminProducts();
+//         refreshProductList();
+//         showSuccess("Product added and approved!");
+//     }
+// }
+
 void MainWindow::onAddProduct() {
     QDialog dialog(this);
     dialog.setWindowTitle("Add Product (Direct - Approved)");
-    dialog.setMinimumWidth(400);
+    dialog.setMinimumWidth(450);
 
     QFormLayout form(&dialog);
 
@@ -950,6 +1160,36 @@ void MainWindow::onAddProduct() {
     form.addRow("Price:*", priceSpin);
     form.addRow("Stock:*", stockSpin);
 
+    // Image upload section
+    QHBoxLayout* imageLayout = new QHBoxLayout();
+
+    productImageLabel = new QLabel("No Image");
+    productImageLabel->setFixedSize(200, 200);
+    productImageLabel->setStyleSheet("border: 2px dashed #ccc; background-color: #f5f5f5;");
+    productImageLabel->setAlignment(Qt::AlignCenter);
+    productImageLabel->setWordWrap(true);
+
+    QVBoxLayout* imageBtnLayout = new QVBoxLayout();
+    uploadImageButton = new QPushButton("Upload Image", &dialog);
+    uploadImageButton->setToolTip("Select an image file (max 400x400)");
+    connect(uploadImageButton, &QPushButton::clicked, this, &MainWindow::onUploadProductImage);
+
+    clearImageButton = new QPushButton("Clear", &dialog);
+    connect(clearImageButton, &QPushButton::clicked, this, &MainWindow::onClearProductImage);
+
+    imageBtnLayout->addWidget(uploadImageButton);
+    imageBtnLayout->addWidget(clearImageButton);
+    imageBtnLayout->addStretch();
+
+    imageLayout->addWidget(productImageLabel);
+    imageLayout->addLayout(imageBtnLayout);
+    imageLayout->addStretch();
+
+    form.addRow("Product Image:", imageLayout);
+
+    // Reset current image for new product
+    currentImageBase64.clear();
+
     QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                                Qt::Horizontal, &dialog);
     form.addRow(&buttonBox);
@@ -957,17 +1197,26 @@ void MainWindow::onAddProduct() {
     connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
     if (dialog.exec() == QDialog::Accepted) {
-        if (nameEdit->text().isEmpty()) {
+        QString productName = nameEdit->text().trimmed();
+
+        if (productName.isEmpty()) {
             showError("Product name is required");
             return;
         }
 
         DataManager* dm = DataManager::getInstance();
+
+        // Check for duplicate product name by this user (admin)
+        if (dm->userHasProductWithName(currentUser->getUsername(), productName)) {
+            showError("You already have a product with this name. Please choose a different name.");
+            return;
+        }
+
         int productId = dm->getNextProductId();
 
         Product* product = new Product(
             productId,
-            nameEdit->text(),
+            productName,
             descEdit->toPlainText(),
             catCombo->currentText(),
             priceSpin->value(),
@@ -975,6 +1224,8 @@ void MainWindow::onAddProduct() {
             currentUser->getUsername()
             );
         product->setStatus(ProductStatus::APPROVED);
+        product->setImageBase64(currentImageBase64);  // Save image
+
         dm->addProduct(product);
 
         Customer* adminCustomer = dynamic_cast<Customer*>(currentUser);
@@ -987,6 +1238,8 @@ void MainWindow::onAddProduct() {
         showSuccess("Product added and approved!");
     }
 }
+
+
 
 void MainWindow::onRegisterProduct() {
     QDialog dialog(this);
@@ -1050,6 +1303,111 @@ void MainWindow::onRegisterProduct() {
     }
 }
 
+
+// void MainWindow::onEditProduct() {
+//     int row = adminProductsTable->currentRow();
+//     if (row < 0) {
+//         showError("Please select a product to edit");
+//         return;
+//     }
+
+//     int productId = adminProductsTable->item(row, 0)->text().toInt();
+//     DataManager* dm = DataManager::getInstance();
+//     Product* product = dm->getProduct(productId);
+//     if (!product) {
+//         showError("Product not found");
+//         return;
+//     }
+
+//     QDialog dialog(this);
+//     dialog.setWindowTitle("Edit Product");
+//     dialog.setMinimumWidth(450);
+
+//     QFormLayout form(&dialog);
+
+//     QLineEdit* nameEdit = new QLineEdit(product->getName(), &dialog);
+//     QTextEdit* descEdit = new QTextEdit(product->getDescription(), &dialog);
+//     descEdit->setMaximumHeight(100);
+//     QComboBox* catCombo = new QComboBox(&dialog);
+//     catCombo->addItems(QStringList() << "Electronics" << "Clothing" << "Books" << "Home" << "Sports" << "Other");
+//     catCombo->setCurrentText(product->getCategory());
+//     QDoubleSpinBox* priceSpin = new QDoubleSpinBox(&dialog);
+//     priceSpin->setRange(0.01, 100000);
+//     priceSpin->setPrefix("$");
+//     priceSpin->setDecimals(2);
+//     priceSpin->setValue(product->getPrice());
+//     QSpinBox* stockSpin = new QSpinBox(&dialog);
+//     stockSpin->setRange(0, 10000);
+//     stockSpin->setValue(product->getStock());
+
+//     form.addRow("Name:*", nameEdit);
+//     form.addRow("Description:", descEdit);
+//     form.addRow("Category:*", catCombo);
+//     form.addRow("Price:*", priceSpin);
+//     form.addRow("Stock:*", stockSpin);
+
+//     // Image upload section
+//     QHBoxLayout* imageLayout = new QHBoxLayout();
+
+//     productImageLabel = new QLabel(&dialog);
+//     productImageLabel->setFixedSize(200, 200);
+//     productImageLabel->setStyleSheet("border: 2px dashed #ccc; background-color: #f5f5f5;");
+//     productImageLabel->setAlignment(Qt::AlignCenter);
+//     productImageLabel->setWordWrap(true);
+
+//     // Load existing image if available
+//     currentImageBase64 = product->getImageBase64();
+//     if (product->hasImage()) {
+//         QImage img = product->getImage();
+//         if (!img.isNull()) {
+//             QPixmap pixmap = QPixmap::fromImage(img);
+//             productImageLabel->setPixmap(pixmap.scaled(200, 200, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+//             productImageLabel->setText("");
+//         } else {
+//             productImageLabel->setText("No Image");
+//         }
+//     } else {
+//         productImageLabel->setText("No Image");
+//     }
+
+//     QVBoxLayout* imageBtnLayout = new QVBoxLayout();
+//     uploadImageButton = new QPushButton("Change Image", &dialog);
+//     uploadImageButton->setToolTip("Select a new image file (max 400x400)");
+//     connect(uploadImageButton, &QPushButton::clicked, this, &MainWindow::onUploadProductImage);
+
+//     clearImageButton = new QPushButton("Remove Image", &dialog);
+//     connect(clearImageButton, &QPushButton::clicked, this, &MainWindow::onClearProductImage);
+
+//     imageBtnLayout->addWidget(uploadImageButton);
+//     imageBtnLayout->addWidget(clearImageButton);
+//     imageBtnLayout->addStretch();
+
+//     imageLayout->addWidget(productImageLabel);
+//     imageLayout->addLayout(imageBtnLayout);
+//     imageLayout->addStretch();
+
+//     form.addRow("Product Image:", imageLayout);
+
+//     QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+//                                Qt::Horizontal, &dialog);
+//     form.addRow(&buttonBox);
+//     connect(&buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+//     connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+//     if (dialog.exec() == QDialog::Accepted) {
+//         product->setName(nameEdit->text());
+//         product->setDescription(descEdit->toPlainText());
+//         product->setCategory(catCombo->currentText());
+//         product->setPrice(priceSpin->value());
+//         product->setStock(stockSpin->value());
+//         product->setImageBase64(currentImageBase64);  // Save image (new or changed)
+
+//         dm->saveProducts();
+//         refreshAdminProducts();
+//         refreshProductList();
+//         showSuccess("Product updated!");
+//     }
+// }
 void MainWindow::onEditProduct() {
     int row = adminProductsTable->currentRow();
     if (row < 0) {
@@ -1067,7 +1425,7 @@ void MainWindow::onEditProduct() {
 
     QDialog dialog(this);
     dialog.setWindowTitle("Edit Product");
-    dialog.setMinimumWidth(400);
+    dialog.setMinimumWidth(450);
 
     QFormLayout form(&dialog);
 
@@ -1092,6 +1450,48 @@ void MainWindow::onEditProduct() {
     form.addRow("Price:*", priceSpin);
     form.addRow("Stock:*", stockSpin);
 
+    // Image upload section
+    QHBoxLayout* imageLayout = new QHBoxLayout();
+
+    productImageLabel = new QLabel(&dialog);
+    productImageLabel->setFixedSize(200, 200);
+    productImageLabel->setStyleSheet("border: 2px dashed #ccc; background-color: #f5f5f5;");
+    productImageLabel->setAlignment(Qt::AlignCenter);
+    productImageLabel->setWordWrap(true);
+
+    // Load existing image if available
+    currentImageBase64 = product->getImageBase64();
+    if (product->hasImage()) {
+        QImage img = product->getImage();
+        if (!img.isNull()) {
+            QPixmap pixmap = QPixmap::fromImage(img);
+            productImageLabel->setPixmap(pixmap.scaled(200, 200, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            productImageLabel->setText("");
+        } else {
+            productImageLabel->setText("No Image");
+        }
+    } else {
+        productImageLabel->setText("No Image");
+    }
+
+    QVBoxLayout* imageBtnLayout = new QVBoxLayout();
+    uploadImageButton = new QPushButton("Change Image", &dialog);
+    uploadImageButton->setToolTip("Select a new image file (max 400x400)");
+    connect(uploadImageButton, &QPushButton::clicked, this, &MainWindow::onUploadProductImage);
+
+    clearImageButton = new QPushButton("Remove Image", &dialog);
+    connect(clearImageButton, &QPushButton::clicked, this, &MainWindow::onClearProductImage);
+
+    imageBtnLayout->addWidget(uploadImageButton);
+    imageBtnLayout->addWidget(clearImageButton);
+    imageBtnLayout->addStretch();
+
+    imageLayout->addWidget(productImageLabel);
+    imageLayout->addLayout(imageBtnLayout);
+    imageLayout->addStretch();
+
+    form.addRow("Product Image:", imageLayout);
+
     QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                                Qt::Horizontal, &dialog);
     form.addRow(&buttonBox);
@@ -1099,11 +1499,25 @@ void MainWindow::onEditProduct() {
     connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
     if (dialog.exec() == QDialog::Accepted) {
-        product->setName(nameEdit->text());
+        QString newName = nameEdit->text().trimmed();
+
+        if (newName.isEmpty()) {
+            showError("Product name is required");
+            return;
+        }
+
+        // Check for duplicate, but exclude the current product being edited
+        if (dm->userHasProductWithName(currentUser->getUsername(), newName, productId)) {
+            showError("You already have another product with this name. Please choose a different name.");
+            return;
+        }
+
+        product->setName(newName);
         product->setDescription(descEdit->toPlainText());
         product->setCategory(catCombo->currentText());
         product->setPrice(priceSpin->value());
         product->setStock(stockSpin->value());
+        product->setImageBase64(currentImageBase64);  // Save image (new or changed)
 
         dm->saveProducts();
         refreshAdminProducts();
@@ -1196,10 +1610,116 @@ void MainWindow::refreshMyProducts() {
     myProductsTable->resizeColumnsToContents();
 }
 
+
+// void MainWindow::onRegisterNewProduct() {
+//     QDialog dialog(this);
+//     dialog.setWindowTitle("Register New Product for Sale");
+//     dialog.setMinimumWidth(450);
+
+//     QFormLayout form(&dialog);
+
+//     QLineEdit* nameEdit = new QLineEdit(&dialog);
+//     QTextEdit* descEdit = new QTextEdit(&dialog);
+//     descEdit->setMaximumHeight(100);
+//     QComboBox* catCombo = new QComboBox(&dialog);
+//     catCombo->addItems(QStringList() << "Electronics" << "Clothing" << "Books" << "Home" << "Sports" << "Other");
+//     QDoubleSpinBox* priceSpin = new QDoubleSpinBox(&dialog);
+//     priceSpin->setRange(0.01, 100000);
+//     priceSpin->setPrefix("$");
+//     priceSpin->setDecimals(2);
+//     QSpinBox* stockSpin = new QSpinBox(&dialog);
+//     stockSpin->setRange(1, 10000);
+
+//     form.addRow("Name:*", nameEdit);
+//     form.addRow("Description:", descEdit);
+//     form.addRow("Category:*", catCombo);
+//     form.addRow("Price:*", priceSpin);
+//     form.addRow("Stock:*", stockSpin);
+
+//     // Image upload section
+//     QHBoxLayout* imageLayout = new QHBoxLayout();
+
+//     productImageLabel = new QLabel("No Image");
+//     productImageLabel->setFixedSize(200, 200);
+//     productImageLabel->setStyleSheet("border: 2px dashed #ccc; background-color: #f5f5f5;");
+//     productImageLabel->setAlignment(Qt::AlignCenter);
+//     productImageLabel->setWordWrap(true);
+
+//     QVBoxLayout* imageBtnLayout = new QVBoxLayout();
+//     uploadImageButton = new QPushButton("Upload Image", &dialog);
+//     uploadImageButton->setToolTip("Select an image file (max 400x400)");
+//     connect(uploadImageButton, &QPushButton::clicked, this, &MainWindow::onUploadProductImage);
+
+//     clearImageButton = new QPushButton("Clear", &dialog);
+//     connect(clearImageButton, &QPushButton::clicked, this, &MainWindow::onClearProductImage);
+
+//     imageBtnLayout->addWidget(uploadImageButton);
+//     imageBtnLayout->addWidget(clearImageButton);
+//     imageBtnLayout->addStretch();
+
+//     imageLayout->addWidget(productImageLabel);
+//     imageLayout->addLayout(imageBtnLayout);
+//     imageLayout->addStretch();
+
+//     form.addRow("Product Image:", imageLayout);
+
+//     // Reset current image for new product
+//     currentImageBase64.clear();
+
+//     QLabel* infoLabel = new QLabel("Your product will be pending admin approval before appearing in the store.");
+//     infoLabel->setWordWrap(true);
+//     infoLabel->setStyleSheet("color: #666; font-style: italic;");
+//     form.addRow(infoLabel);
+
+//     QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+//                                Qt::Horizontal, &dialog);
+//     form.addRow(&buttonBox);
+//     connect(&buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+//     connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+//     if (dialog.exec() == QDialog::Accepted) {
+//         if (nameEdit->text().isEmpty()) {
+//             showError("Product name is required");
+//             return;
+//         }
+
+//         DataManager* dm = DataManager::getInstance();
+//         int productId = dm->getNextProductId();
+
+//         // Create product with current user as seller
+//         Product* product = new Product(
+//             productId,
+//             nameEdit->text(),
+//             descEdit->toPlainText(),
+//             catCombo->currentText(),
+//             priceSpin->value(),
+//             stockSpin->value(),
+//             currentUser->getUsername()
+//             );
+//         product->setImageBase64(currentImageBase64);  // Save image
+
+//         if (dm->addProduct(product)) {
+//             // Also add to customer's registered products for backward compatibility
+//             Customer* customer = dynamic_cast<Customer*>(currentUser);
+//             if (customer) {
+//                 customer->addRegisteredProduct(productId);
+//                 dm->saveUsers();
+//             }
+
+//             dm->saveAllData();
+//             refreshMyProducts();
+//             showSuccess("Product registered! It will appear in the store after admin approval.");
+//         } else {
+//             showError("Failed to register product");
+//             delete product;
+//         }
+//     }
+// }
+
 void MainWindow::onRegisterNewProduct() {
     QDialog dialog(this);
     dialog.setWindowTitle("Register New Product for Sale");
-    dialog.setMinimumWidth(400);
+    dialog.setMinimumWidth(450);
 
     QFormLayout form(&dialog);
 
@@ -1221,6 +1741,36 @@ void MainWindow::onRegisterNewProduct() {
     form.addRow("Price:*", priceSpin);
     form.addRow("Stock:*", stockSpin);
 
+    // Image upload section
+    QHBoxLayout* imageLayout = new QHBoxLayout();
+
+    productImageLabel = new QLabel("No Image");
+    productImageLabel->setFixedSize(200, 200);
+    productImageLabel->setStyleSheet("border: 2px dashed #ccc; background-color: #f5f5f5;");
+    productImageLabel->setAlignment(Qt::AlignCenter);
+    productImageLabel->setWordWrap(true);
+
+    QVBoxLayout* imageBtnLayout = new QVBoxLayout();
+    uploadImageButton = new QPushButton("Upload Image", &dialog);
+    uploadImageButton->setToolTip("Select an image file (max 400x400)");
+    connect(uploadImageButton, &QPushButton::clicked, this, &MainWindow::onUploadProductImage);
+
+    clearImageButton = new QPushButton("Clear", &dialog);
+    connect(clearImageButton, &QPushButton::clicked, this, &MainWindow::onClearProductImage);
+
+    imageBtnLayout->addWidget(uploadImageButton);
+    imageBtnLayout->addWidget(clearImageButton);
+    imageBtnLayout->addStretch();
+
+    imageLayout->addWidget(productImageLabel);
+    imageLayout->addLayout(imageBtnLayout);
+    imageLayout->addStretch();
+
+    form.addRow("Product Image:", imageLayout);
+
+    // Reset current image for new product
+    currentImageBase64.clear();
+
     QLabel* infoLabel = new QLabel("Your product will be pending admin approval before appearing in the store.");
     infoLabel->setWordWrap(true);
     infoLabel->setStyleSheet("color: #666; font-style: italic;");
@@ -1233,31 +1783,41 @@ void MainWindow::onRegisterNewProduct() {
     connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
     if (dialog.exec() == QDialog::Accepted) {
-        if (nameEdit->text().isEmpty()) {
+        QString productName = nameEdit->text().trimmed();
+
+        if (productName.isEmpty()) {
             showError("Product name is required");
             return;
         }
 
         DataManager* dm = DataManager::getInstance();
+
+        // Check for duplicate product name by this user
+        if (dm->userHasProductWithName(currentUser->getUsername(), productName)) {
+            showError("You already have a product with this name. Please choose a different name.");
+            return;
+        }
+
         int productId = dm->getNextProductId();
 
         // Create product with current user as seller
         Product* product = new Product(
             productId,
-            nameEdit->text(),
+            productName,
             descEdit->toPlainText(),
             catCombo->currentText(),
             priceSpin->value(),
             stockSpin->value(),
-            currentUser->getUsername()  // Ensure seller is set correctly
+            currentUser->getUsername()
             );
+        product->setImageBase64(currentImageBase64);  // Save image
 
         if (dm->addProduct(product)) {
             // Also add to customer's registered products for backward compatibility
             Customer* customer = dynamic_cast<Customer*>(currentUser);
             if (customer) {
                 customer->addRegisteredProduct(productId);
-                dm->saveUsers();  // Save the updated registered products list
+                dm->saveUsers();
             }
 
             dm->saveAllData();
@@ -1269,6 +1829,9 @@ void MainWindow::onRegisterNewProduct() {
         }
     }
 }
+
+
+
 void MainWindow::onChangePassword() {
     QString currentPass = currentPasswordEdit->text();
     QString newPass = newPasswordEdit->text();

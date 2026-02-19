@@ -66,7 +66,8 @@ private slots:
     // My Products tab (for customers)
     void onRegisterNewProduct();
     void refreshMyProducts();
-
+    void onUploadProductImage();
+    void onClearProductImage();
 private:
     void setupUI();
     void setupProfileTab();
@@ -113,6 +114,10 @@ private:
     QPushButton* addToCartButton;
     QPushButton* viewDetailsButton;
     QLabel* productDetailsLabel;
+    QLabel* productImageLabel;      // For showing product image in dialogs
+    QPushButton* uploadImageButton; // For uploading image
+    QPushButton* clearImageButton;  // For clearing image
+    QString currentImageBase64;
 
     // Cart tab
     QWidget* cartTab;

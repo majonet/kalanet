@@ -84,6 +84,8 @@ public:
     int getTotalUsers() const { return users.size(); }
     int getTotalProducts() const { return products.size(); }
     int getPendingCount() const;
+    // Check if user already has a product with this exact name
+    bool userHasProductWithName(const QString& username, const QString& productName, int excludeProductId = -1) const;
 
 signals:
     void dataChanged();

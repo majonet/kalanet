@@ -380,6 +380,39 @@ bool DataManager::loadUsersFromCSV() {
     return true;
 }
 
+// bool DataManager::saveProductsToCSV() {
+//     QFile file(productsFile);
+//     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+//         qDebug() << "Failed to open products file for writing:" << productsFile;
+//         return false;
+//     }
+
+//     QTextStream stream(&file);
+//     stream.setEncoding(QStringConverter::Utf8);
+//     stream << "product_id,name,description,category,price,stock,seller,status,next_id\n";
+
+//     for (auto it = products.begin(); it != products.end(); ++it) {
+//         Product* p = it.value();
+//         QString statusStr;
+//         switch(p->getStatus()) {
+//         case ProductStatus::PENDING_APPROVAL: statusStr = "pending"; break;
+//         case ProductStatus::APPROVED: statusStr = "approved"; break;
+//         case ProductStatus::SOLD: statusStr = "sold"; break;
+//         }
+//         stream << p->getProductId() << ","
+//                << escapeCSV(p->getName()) << ","
+//                << escapeCSV(p->getDescription()) << ","
+//                << escapeCSV(p->getCategory()) << ","
+//                << p->getPrice() << ","
+//                << p->getStock() << ","
+//                << escapeCSV(p->getSellerUsername()) << ","
+//                << statusStr << ","
+//                << nextProductId
+//                << "\n";
+//     }
+//     file.close();
+//     return true;
+// }
 bool DataManager::saveProductsToCSV() {
     QFile file(productsFile);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -389,7 +422,8 @@ bool DataManager::saveProductsToCSV() {
 
     QTextStream stream(&file);
     stream.setEncoding(QStringConverter::Utf8);
-    stream << "product_id,name,description,category,price,stock,seller,status,next_id\n";
+    // Updated header to include image_base64
+    stream << "product_id,name,description,category,price,stock,seller,status,next_id,image_base64\n";
 
     for (auto it = products.begin(); it != products.end(); ++it) {
         Product* p = it.value();
@@ -407,13 +441,64 @@ bool DataManager::saveProductsToCSV() {
                << p->getStock() << ","
                << escapeCSV(p->getSellerUsername()) << ","
                << statusStr << ","
-               << nextProductId
+               << nextProductId << ","
+               << escapeCSV(p->getImageBase64())  // Save image as base64
                << "\n";
     }
     file.close();
     return true;
 }
+// bool DataManager::loadProductsFromCSV() {
+//     QFile file(productsFile);
+//     if (!file.exists()) return true;
 
+//     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+//         qDebug() << "Failed to open products file for reading:" << productsFile;
+//         return false;
+//     }
+
+//     QTextStream stream(&file);
+//     stream.setEncoding(QStringConverter::Utf8);
+
+//     // Clear existing products
+//     for (auto it = products.begin(); it != products.end(); ++it) {
+//         delete it.value();
+//     }
+//     products.clear();
+
+//     QString header = stream.readLine(); // skip header
+
+//     while (!stream.atEnd()) {
+//         QString line = stream.readLine();
+//         if (line.trimmed().isEmpty()) continue;
+
+//         QStringList parts = line.split(",");
+//         if (parts.size() >= 8) {
+//             int id = parts[0].toInt();
+//             QString name = unescapeCSV(parts[1]);
+//             QString desc = unescapeCSV(parts[2]);
+//             QString category = unescapeCSV(parts[3]);
+//             double price = parts[4].toDouble();
+//             int stock = parts[5].toInt();
+//             QString seller = unescapeCSV(parts[6]);
+//             QString statusStr = parts[7];
+
+//             if (parts.size() >= 9) {
+//                 nextProductId = parts[8].toInt();
+//             }
+
+//             ProductStatus status = ProductStatus::PENDING_APPROVAL;
+//             if (statusStr == "approved") status = ProductStatus::APPROVED;
+//             else if (statusStr == "sold") status = ProductStatus::SOLD;
+
+//             Product* product = new Product(id, name, desc, category, price, stock, seller);
+//             product->setStatus(status);
+//             products[id] = product;
+//         }
+//     }
+//     file.close();
+//     return true;
+// }
 bool DataManager::loadProductsFromCSV() {
     QFile file(productsFile);
     if (!file.exists()) return true;
@@ -459,6 +544,12 @@ bool DataManager::loadProductsFromCSV() {
 
             Product* product = new Product(id, name, desc, category, price, stock, seller);
             product->setStatus(status);
+
+            // Load image if present (field 9)
+            if (parts.size() >= 10) {
+                product->setImageBase64(unescapeCSV(parts[9]));
+            }
+
             products[id] = product;
         }
     }
@@ -554,7 +645,22 @@ bool DataManager::saveCartToCSV() {
     file.close();
     return true;
 }
+bool DataManager::userHasProductWithName(const QString& username, const QString& productName, int excludeProductId) const {
+    QMutexLocker locker(&dataMutex);
 
+    QString lowerName = productName.toLower().trimmed();
+
+    for (auto it = products.begin(); it != products.end(); ++it) {
+        Product* p = it.value();
+        // Check if same seller, same name (case-insensitive), and not the product we're editing
+        if (p->getSellerUsername() == username &&
+            p->getName().toLower().trimmed() == lowerName &&
+            p->getProductId() != excludeProductId) {
+            return true;  // Found duplicate
+        }
+    }
+    return false;  // No duplicate found
+}
 bool DataManager::loadCartFromCSV() {
     QString filename = dataDir + "/carts.csv";
     QFile file(filename);
