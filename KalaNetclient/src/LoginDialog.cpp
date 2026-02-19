@@ -345,6 +345,10 @@ bool LoginDialog::validateSignupFields() {
     }
 
     // Simple email validation
+        if (!email.contains("@") || !email.contains(".")) {
+        signupErrorLabel->setText("Please enter a valid email address");
+        return false;
+    }
 
 
     // Phone validation: exactly 11 digits
